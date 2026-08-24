@@ -87,12 +87,17 @@ async function runOCR(){
  app.innerHTML=`<section class="scan-status"><div class="scan-spinner"></div><h2 id="ocrTitle">Lecture de la recette…</h2><p id="ocrProgress">Préparation de l'analyse…</p></section>`;
  try{
    if(!window.Tesseract) throw new Error("OCR non chargé");
-   const result=await Tesseract.recognize(scannedImage,'fra+eng',{
-     logger:m=>{
+   const imageUrl=URL.createObjectURL(scannedImage);
+   const workerOptions={logger:m=>{
        const p=document.querySelector("#ocrProgress");
        if(p && m.progress!==undefined) p.textContent=`${m.status} — ${Math.round(m.progress*100)}%`;
-     }
+     }};
+   const result=await Tesseract.recognize(imageUrl,'fra+eng',{
+     ...workerOptions,
+     tessedit_pageseg_mode: 6,
+     preserve_interword_spaces: '1'
    });
+   URL.revokeObjectURL(imageUrl);
    openRecipeEditor(result.data.text||"");
  }catch(err){
    console.error(err);
@@ -101,44 +106,156 @@ async function runOCR(){
  }
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+
+function cleanOCRLine(line){
+  return line
+    .replace(/[|¦]/g," ")
+    .replace(/[“”]/g,'"')
+    .replace(/[’]/g,"'")
+    .replace(/[^\S\r\n]+/g," ")
+    .replace(/\s+([,.;:!?])/g,"$1")
+    .trim();
+}
+function normalizeOCRText(text){
+  return text.replace(/\r/g,"")
+    .split("\n")
+    .map(cleanOCRLine)
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\n{3,}/g,"\n\n");
+}
+function looksLikeIngredient(line){
+  return /(?:^\d+(?:[.,]\d+)?\s*(?:g|kg|ml|cl|l|c\.?\s*à\s*soupe|c\.?\s*à\s*café|cuillère|sachet|pincée|tranche|oeuf|œuf|verre)|farine|sucre|beurre|lait|levure|sel|poivre|huile|crème|fromage|chocolat|tomate|oignon|ail|poulet|pâtes|riz|vanille|citron)/i.test(line);
+}
+function looksLikeStep(line){
+  return /^(?:\d+\s*[.)-]\s*)?(mettre|mélanger|ajouter|incorporer|faire|cuire|verser|préparer|chauffer|fouetter|laisser|couper|servir|réserver|déposer|remuer|enfourner|battre)/i.test(line);
+}
+function isHeading(line){
+  return /^(ingrédients?|préparation|instructions?|étapes?|recette|pour\s+\d+\s+personnes?|temps de préparation|temps de cuisson)/i.test(line);
+}
 function parseRecipe(text){
- const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
- const title=lines.find(x=>x.length>3&&x.length<80)||"Recette scannée";
- const ingredientHints=lines.filter(x=>/(\d+\s*(g|kg|ml|cl|l|cuill|c\.|pincée|pièce)|œuf|farine|sucre|sel|poivre|huile|beurre|lait|crème|poulet|tomate|oignon)/i.test(x)).slice(0,30);
- const steps=lines.filter(x=>/^\d+[.)]|mélang|ajout|cuire|faire|verser|prépar|chauff|servir|couper/i.test(x)).slice(0,20);
- const timeMatch=text.match(/(\d+\s*(min|minutes|h|heure))/i);
- return {title,ingredients:ingredientHints.join("\n"),steps:steps.join("\n")||text,time:timeMatch?timeMatch[1]:"",people:"",emoji:"📖"};
+  const normalized = normalizeOCRText(text);
+  const raw = normalized.split("\n").map(x=>x.trim()).filter(Boolean);
+  const lines = raw.filter(x=>!isHeading(x));
+  let title = lines.find(x=>x.length>3 && x.length<55 && !looksLikeIngredient(x) && !looksLikeStep(x)) || "Recette scannée";
+  title = title.replace(/[=~_]+$/g,"").trim();
+
+  const timeMatch = normalized.match(/(?:préparation|cuisson|temps)?\s*:?\s*(\d+\s*(?:min(?:utes)?|h(?:eures?)?))/i);
+  const peopleMatch = normalized.match(/(?:pour\s*)?(\d+)\s*(?:personnes?|pers\.?)/i);
+
+  const ingredients = [];
+  const steps = [];
+  let mode = "";
+  for(const line of lines){
+    const l = cleanOCRLine(line);
+    if(!l || l === title) continue;
+    if(/^ingrédients?/i.test(l)){ mode="ingredients"; continue; }
+    if(/^(préparation|instructions?|étapes?)/i.test(l)){ mode="steps"; continue; }
+
+    if(mode==="ingredients"){
+      if(looksLikeStep(l)){ mode="steps"; steps.push(l); }
+      else ingredients.push(l);
+      continue;
+    }
+    if(mode==="steps"){
+      steps.push(l);
+      continue;
+    }
+
+    if(looksLikeIngredient(l) && steps.length===0) ingredients.push(l);
+    else if(looksLikeStep(l) || ingredients.length>0) steps.push(l);
+  }
+
+  // OCR can merge ingredients and instructions on one line. Split obvious instruction starts.
+  const fixedIngredients = [];
+  const fixedSteps = [...steps];
+  for(const line of ingredients){
+    const split = line.split(/(?=(?:\d+\s*[.)-]\s*)?(?:mettre|mélanger|ajouter|incorporer|faire|cuire|verser|préparer|chauffer|fouetter|laisser)\b)/i);
+    if(split.length>1){
+      fixedIngredients.push(split[0].trim());
+      fixedSteps.unshift(...split.slice(1).map(x=>x.trim()).filter(Boolean));
+    } else fixedIngredients.push(line);
+  }
+
+  const dedupe = arr => [...new Set(arr.map(cleanOCRLine).filter(Boolean))];
+  return {
+    title,
+    ingredients: dedupe(fixedIngredients).join("\n"),
+    steps: dedupe(fixedSteps).join("\n"),
+    time: timeMatch ? timeMatch[1] : "",
+    people: peopleMatch ? peopleMatch[1] : "",
+    emoji:"🥞"
+  };
 }
+function formatSteps(text){
+  const lines=text.split(/\n+/).map(cleanOCRLine).filter(Boolean);
+  return lines.map((line,i)=>{
+    const cleaned=line.replace(/^\d+\s*[.)-]\s*/,"").trim();
+    return `${i+1}. ${cleaned}`;
+  }).join("\n");
+}
+
+
 function openRecipeEditor(text){
- const r=parseRecipe(text);
- title.textContent="Vérifier la recette ✏️";subtitle.textContent="Corrige avant de l'enregistrer";
- app.innerHTML=`<button class="link" onclick="openScanner()">← Retour</button>
- <section class="section">
- <div class="form-card">
- <div class="field"><label>Nom de la recette</label><input id="rTitle" value="${escapeHtml(r.title)}"></div>
- <div class="grid"><div class="field"><label>Temps</label><input id="rTime" value="${escapeHtml(r.time)}" placeholder="ex. 30 min"></div>
- <div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people)}" placeholder="ex. 4"></div></div>
- <div class="field"><label>Ingrédients — un par ligne</label><textarea id="rIngredients" placeholder="200 g de pâtes">${escapeHtml(r.ingredients)}</textarea></div>
- <div class="field"><label>Préparation</label><textarea id="rSteps">${escapeHtml(r.steps)}</textarea></div>
- <button class="primary pressable" onclick="saveScannedRecipe()">💾 Enregistrer ma recette</button>
- </div></section>`;
+  const r=parseRecipe(text);
+  title.textContent="Vérifier la recette ✏️";
+  subtitle.textContent="Le scan est séparé automatiquement en ingrédients et étapes";
+  app.innerHTML=`<button class="link" onclick="openScanner()">← Scanner à nouveau</button>
+  <section class="section scanner-editor">
+    <div class="scan-result-banner">
+      <span>✨</span><div><b>Analyse terminée</b><p>Vérifie les informations avant d'enregistrer.</p></div>
+    </div>
+    <div class="form-card">
+      <div class="field"><label>Nom de la recette</label><input id="rTitle" value="${escapeHtml(r.title)}"></div>
+      <div class="meta-fields">
+        <div class="field"><label>Temps</label><input id="rTime" value="${escapeHtml(r.time)}" placeholder="ex. 30 min"></div>
+        <div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people)}" placeholder="ex. 4"></div>
+      </div>
+      <div class="field"><label>Ingrédients <span class="hint">— un par ligne</span></label><textarea id="rIngredients" placeholder="250 g de farine&#10;2 œufs">${escapeHtml(r.ingredients)}</textarea></div>
+      <div class="field"><label>Préparation <span class="hint">— une étape par ligne</span></label><textarea id="rSteps">${escapeHtml(formatSteps(r.steps))}</textarea></div>
+      <button class="primary pressable" onclick="saveScannedRecipe()">💾 Enregistrer ma recette</button>
+    </div>
+  </section>`;
 }
+
 function saveScannedRecipe(){
  const r={title:document.querySelector("#rTitle").value.trim()||"Recette sans titre",
  time:document.querySelector("#rTime").value.trim()||"?",
  people:document.querySelector("#rPeople").value.trim()||"",
  ingredients:document.querySelector("#rIngredients").value.trim(),
  steps:document.querySelector("#rSteps").value.trim(),emoji:"📖",scannedAt:new Date().toISOString()};
- state.privateRecipes=state.privateRecipes||[];state.privateRecipes.unshift(r);save();toast("📚 Recette enregistrée !");privateRecipes();
+ state.privateRecipes=state.privateRecipes||[];
+ if(scannedImage && scannedImage.size < 3*1024*1024){
+   const reader=new FileReader();
+   reader.onload=()=>{r.image=reader.result;state.privateRecipes.unshift(r);save();toast("📚 Recette enregistrée !");privateRecipes();};
+   reader.readAsDataURL(scannedImage);return;
+ }
+ state.privateRecipes.unshift(r);save();toast("📚 Recette enregistrée !");privateRecipes();
 }
+
 function openPrivateRecipe(i){
- const r=state.privateRecipes[i];title.textContent=r.title;subtitle.textContent="Recette personnelle";
- app.innerHTML=`<button class="link" onclick="privateRecipes()">← Retour</button><div class="recipe-hero">📖</div>
- <section class="section"><h2>${escapeHtml(r.title)}</h2><p>📷 Recette scannée ${r.time?"· ⏱ "+escapeHtml(r.time):""} ${r.people?"· 👥 "+escapeHtml(r.people):""}</p></section>
- <section class="section"><h2>🧅 Ingrédients</h2><div class="form-card" style="white-space:pre-line">${escapeHtml(r.ingredients||"À compléter")}</div></section>
- <section class="section"><h2>👨‍🍳 Préparation</h2><div class="form-card" style="white-space:pre-line">${escapeHtml(r.steps||"À compléter")}</div></section>
- <div class="scan-actions"><button class="secondary pressable" onclick="editPrivateRecipe(${i})">✏️ Modifier</button><button class="primary pressable" onclick="addPrivateToMenu(${i})">📅 Ajouter au menu</button></div>`;
+ const r=state.privateRecipes[i];
+ title.textContent=r.title;subtitle.textContent="Recette personnelle";
+ const ingredients=(r.ingredients||"À compléter").split(/\n+/).filter(Boolean);
+ const steps=(r.steps||"À compléter").split(/\n+/).filter(Boolean);
+ app.innerHTML=`<button class="link" onclick="privateRecipes()">← Mes recettes</button>
+ <article class="recipe-sheet">
+   <aside class="recipe-ingredients-panel">
+     <h1>${escapeHtml(r.title)}</h1>
+     <h2>Ingrédients</h2>
+     <ul>${ingredients.map(x=>`<li>${escapeHtml(x.replace(/^[•\-]\s*/,""))}</li>`).join("")}</ul>
+   </aside>
+   <main class="recipe-main-panel">
+     <div class="recipe-photo-wrap">
+       ${r.image ? `<img src="${r.image}" class="private-recipe-image" alt="${escapeHtml(r.title)}">` : `<div class="recipe-photo-placeholder">📖</div>`}
+     </div>
+     <div class="recipe-meta">⏱ ${escapeHtml(r.time||"Temps à préciser")} ${r.people?`<span>👥 ${escapeHtml(r.people)} personnes</span>`:""}</div>
+     <ol class="recipe-steps">${steps.map(x=>`<li>${escapeHtml(x.replace(/^\d+\s*[.)-]\s*/,""))}</li>`).join("")}</ol>
+     <div class="recipe-actions"><button class="secondary pressable" onclick="editPrivateRecipe(${i})">✏️ Modifier</button><button class="primary pressable" onclick="addPrivateToMenu(${i})">📅 Ajouter au menu</button></div>
+   </main>
+ </article>`;
 }
+
 function editPrivateRecipe(i){
  const r=state.privateRecipes[i];openRecipeEditorFromData(r,i);
 }
