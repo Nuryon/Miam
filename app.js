@@ -1,5 +1,5 @@
 const recipes=[{name:"Pâtes crémeuses aux champignons",emoji:"🍝",time:"25 min",match:87,cat:"Plats"},{name:"Poulet curry coco",emoji:"🍛",time:"35 min",match:100,cat:"Cuisine du monde"},{name:"Bowl quinoa avocat",emoji:"🥗",time:"20 min",match:92,cat:"Healthy"},{name:"Lasagnes maison",emoji:"🍲",time:"1 h",match:60,cat:"Plats"},{name:"Tacos maison",emoji:"🌮",time:"30 min",match:80,cat:"Cuisine du monde"},{name:"Fondant chocolat",emoji:"🍰",time:"40 min",match:70,cat:"Desserts"}];
-const defaults={favorites:[],liked:[],fridge:["🍗 Poulet","🍅 Tomates","🥚 Œufs","🧀 Parmesan","🍄 Champignons"],menu:[["Lun","🥗 Salade César","🍛 Poulet curry"],["Mar","🌯 Wrap poulet","🍝 Pâtes pesto"],["Mer","🍲 Bowl quinoa","🍕 Pizza maison"],["Jeu","🥣 Soupe légumes","🍲 Ratatouille"],["Ven","🥗 Salade composée","🌮 Tacos maison"],["Sam","🍔 Burger maison","🍝 Pâtes crémeuses"],["Dim","🥞 Brunch","🍲 Gratin dauphinois"]],dark:false};
+const defaults={favorites:[],liked:[],fridge:["🍗 Poulet","🍅 Tomates","🥚 Œufs","🧀 Parmesan","🍄 Champignons"],menu:[["Lun","🥗 Salade César","🍛 Poulet curry"],["Mar","🌯 Wrap poulet","🍝 Pâtes pesto"],["Mer","🍲 Bowl quinoa","🍕 Pizza maison"],["Jeu","🥣 Soupe légumes","🍲 Ratatouille"],["Ven","🥗 Salade composée","🌮 Tacos maison"],["Sam","🍔 Burger maison","🍝 Pâtes crémeuses"],["Dim","🥞 Brunch","🍲 Gratin dauphinois"]],dark:false,privateRecipes:[]};
 let state=Object.assign({},defaults,JSON.parse(localStorage.getItem("miamState")||"{}")); state.page="home";state.favorites=new Set(state.favorites);state.liked=new Set(state.liked);state.chat=[];
 const app=document.querySelector("#app"),title=document.querySelector("#pageTitle"),subtitle=document.querySelector("#subtitle");
 const nav={home:["Bonjour 👋","Une idée pour aujourd'hui ?"],discover:["Découvrir","Trouve ton prochain coup de cœur"],fridge:["Mon frigo 🧊","Tes ingrédients disponibles"],menu:["Mon menu 📅","Organise tes repas simplement"],profile:["Ma bibliothèque 👤","Tout ton univers cuisine"],assistant:["Assistant Miam ✨","Ton copilote en cuisine"]};
@@ -12,7 +12,7 @@ function discover(){let c=[["🥗","Entrées"],["🍝","Plats"],["🍰","Dessert
 function fridge(){return `<div class="tabs"><button class="tab active">Mes aliments</button><button class="tab" onclick="showSuggestions()">Que cuisiner ?</button></div><input class="search" placeholder="🔎 Ajouter un aliment puis Entrée" onkeydown="if(event.key==='Enter')addFood(this.value)"><button class="primary pressable" onclick="let x=prompt('Quel aliment veux-tu ajouter ?');if(x)addFood(x)">＋ Ajouter un aliment</button><section class="section"><h2>⚠️ À consommer rapidement</h2><div class="row-card"><div class="food-icon">🍗</div><div class="grow"><h3>Poulet</h3><p>À consommer dans 1 jour</p></div><span class="badge danger">Urgent</span></div><div class="row-card"><div class="food-icon">🍅</div><div class="grow"><h3>Tomates</h3><p>À consommer dans 2 jours</p></div><span class="badge warning">Bientôt</span></div></section><section class="section"><h2>Mon inventaire (${state.fridge.length})</h2>${state.fridge.map((x,i)=>`<div class="row-card"><div class="grow">${x}</div><button class="link" onclick="removeFood(${i})">Retirer</button></div>`).join("")}</section>`}
 function sugg(){return `<div class="tabs"><button class="tab" data-page="fridge">Mes aliments</button><button class="tab active">Que cuisiner ?</button></div><h2>Que puis-je cuisiner ? 🥬</h2><p>Basé sur les ingrédients présents dans ton frigo.</p><section class="section">${recipes.map(r=>`<div class="row-card" onclick="openRecipe('${r.name}')"><div class="food-icon">${r.emoji}</div><div class="grow"><h3>${r.name}</h3><p>${r.match===100?"Tous les ingrédients disponibles":"Il manque quelques ingrédients"}</p><div class="progress"><i style="width:${r.match}%"></i></div></div><span class="badge">${r.match}%</span></div>`).join("")}</section>`}
 function menu(){return `<button class="primary pressable" onclick="generateMenu()">✨ Générer mon menu</button><section class="section"><div class="week">${state.menu.map((d,i)=>`<div class="day"><b>${d[0]}</b><div class="meal" onclick="editMeal(${i},1)">☀️ ${d[1]}</div><div class="meal" onclick="editMeal(${i},2)">🌙 ${d[2]}</div></div>`).join("")}</div></section><button class="secondary pressable" style="width:100%" onclick="shopping()">🛒 Générer la liste de courses</button>`}
-function profile(){return `<section class="hero"><h2>Ma cuisine ❤️</h2><p>${state.favorites.size} favoris · ${state.liked.size} recettes aimées</p><div class="emoji">👨‍🍳</div></section><section class="section"><div class="row-card"><div class="food-icon">❤️</div><div class="grow"><h3>Mes favoris</h3><p>${state.favorites.size} recette(s)</p></div></div><div class="row-card"><div class="food-icon">👍</div><div class="grow"><h3>J'ai aimé</h3><p>${state.liked.size} recette(s)</p></div></div><div class="row-card"><div class="food-icon">📚</div><div class="grow"><h3>Mes recettes privées</h3><p>Bientôt : import par scan</p></div></div></section>`}
+function profile(){return `<section class="hero"><h2>Ma cuisine ❤️</h2><p>${state.favorites.size} favoris · ${state.liked.size} recettes aimées</p><div class="emoji">👨‍🍳</div></section><section class="section"><div class="row-card"><div class="food-icon">❤️</div><div class="grow"><h3>Mes favoris</h3><p>${state.favorites.size} recette(s)</p></div></div><div class="row-card"><div class="food-icon">👍</div><div class="grow"><h3>J'ai aimé</h3><p>${state.liked.size} recette(s)</p></div></div><div class="row-card" onclick="privateRecipes()"><div class="food-icon">📚</div><div class="grow"><h3>Mes recettes privées</h3><p>📷 Scanner et sauvegarder tes recettes</p></div><span>›</span></div></section>`}
 function assistant(){let m=state.chat.length?state.chat:`<div class="chat-bubble">Bonjour ! 👋 Je peux t'aider à choisir un repas, utiliser ton frigo ou trouver une idée rapide.</div>`;return `<div class="chat">${m}</div><section class="section"><div class="suggestions"><button class="suggest" onclick="ask('Que puis-je cuisiner avec mon frigo ?')">🧊 Avec mon frigo</button><button class="suggest" onclick="ask('Une recette rapide')">⚡ Rapide</button><button class="suggest" onclick="ask('Un repas pas cher')">💰 Petit budget</button><button class="suggest" onclick="ask('Surprends-moi')">🎲 Surprise</button></div></section><form class="chat-form" onsubmit="sendChat(event)"><input id="chatInput" placeholder="Écris ton message..."><button class="primary pressable" style="width:auto;padding:10px 15px">➤</button></form>`}
 function render(){let f={home,discover,fridge,menu,profile,assistant};app.innerHTML=f[state.page]();bind()}
 function bind(){document.querySelectorAll("[data-page]").forEach(e=>e.addEventListener("click",()=>setPage(e.dataset.page)))}
@@ -32,6 +32,134 @@ function ask(q){state.chat+=`<div class="chat-bubble user">${q}</div>`;let l=q.t
 function sendChat(e){e.preventDefault();let x=document.querySelector("#chatInput").value.trim();if(x)ask(x)}
 function search(q){q=q.toLowerCase();if(!q){render();return}let a=recipes.filter(r=>r.name.toLowerCase().includes(q));app.innerHTML=`<h2>Résultats</h2><div class="grid">${a.length?a.map(card).join(""):`<div class="empty">Aucune recette trouvée 😕</div>`}</div>`}
 function filterCat(c){let a=recipes.filter(r=>r.cat===c);app.innerHTML=`<button class="link" onclick="setPage('discover')">← Retour</button><section class="section"><h2>${c}</h2><div class="grid">${a.length?a.map(card).join(""):`<div class="empty">Cette catégorie sera bientôt remplie 🍋</div>`}</div></section>`}
+
+// --- Scanner OCR de recettes ---
+let scannedImage = null;
+function privateRecipes(){
+  const list=state.privateRecipes||[];
+  title.textContent="Mes recettes 📚";
+  subtitle.textContent="Tes recettes scannées et personnelles";
+  app.innerHTML=`<button class="link" onclick="setPage('profile')">← Retour</button>
+  <section class="section">
+    <div class="scan-zone" onclick="openScanner()">
+      <div style="font-size:52px">📷</div>
+      <h2>Scanner une recette</h2>
+      <p>Prends une photo d'une page de livre ou importe une image.</p>
+      <p class="scan-note">L'application analysera le texte automatiquement.</p>
+    </div>
+  </section>
+  <section class="section"><div class="section-head"><h2>Mes recettes (${list.length})</h2></div>
+  ${list.length?`<div class="grid">${list.map((r,i)=>privateCard(r,i)).join("")}</div>`:`<div class="empty">Aucune recette personnelle pour le moment.<br><br>📖 Scanne une recette pour commencer !</div>`}
+  </section>`;
+}
+function privateCard(r,i){
+ return `<article class="recipe-card private-recipe" onclick="openPrivateRecipe(${i})">
+ <div class="recipe-img">${r.emoji||"📖"}</div><span class="private-tag">Privée</span>
+ <div class="pad"><h3>${escapeHtml(r.title||"Recette sans titre")}</h3>
+ <div class="small">📷 Scannée · ⏱ ${escapeHtml(r.time||"?")}</div></div></article>`;
+}
+function openScanner(){
+ title.textContent="Scanner une recette 📷";
+ subtitle.textContent="Photo → texte → recette";
+ app.innerHTML=`<button class="link" onclick="privateRecipes()">← Retour</button>
+ <section class="section">
+ <div class="scan-zone" onclick="document.getElementById('recipeImage').click()">
+   <div style="font-size:58px">📸</div><h2>Photographier une recette</h2>
+   <p>Utilise la caméra ou choisis une image.</p>
+ </div>
+ <input id="recipeImage" type="file" accept="image/*" capture="environment" hidden onchange="previewScan(this)">
+ <div id="scanPreviewArea"></div>
+ <div class="form-card" style="margin-top:15px"><b>💡 Conseil pour un meilleur résultat</b>
+ <p style="margin-top:7px">Prends la page de face, avec une bonne lumière et un texte suffisamment net.</p></div>
+ </section>`;
+}
+function previewScan(input){
+ const file=input.files&&input.files[0]; if(!file)return;
+ scannedImage=file;
+ const url=URL.createObjectURL(file);
+ document.querySelector("#scanPreviewArea").innerHTML=`<img class="scan-preview" src="${url}" alt="Recette à analyser">
+ <div class="scan-actions"><button class="secondary pressable" onclick="openScanner()">↻ Changer</button>
+ <button class="primary pressable" onclick="runOCR()">✨ Lire la recette</button></div>`;
+}
+async function runOCR(){
+ if(!scannedImage)return;
+ title.textContent="Analyse en cours ✨"; subtitle.textContent="Lecture du texte de ta recette";
+ app.innerHTML=`<section class="scan-status"><div class="scan-spinner"></div><h2 id="ocrTitle">Lecture de la recette…</h2><p id="ocrProgress">Préparation de l'analyse…</p></section>`;
+ try{
+   if(!window.Tesseract) throw new Error("OCR non chargé");
+   const result=await Tesseract.recognize(scannedImage,'fra+eng',{
+     logger:m=>{
+       const p=document.querySelector("#ocrProgress");
+       if(p && m.progress!==undefined) p.textContent=`${m.status} — ${Math.round(m.progress*100)}%`;
+     }
+   });
+   openRecipeEditor(result.data.text||"");
+ }catch(err){
+   console.error(err);
+   toast("Impossible d'analyser l'image");
+   openRecipeEditor("");
+ }
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+function parseRecipe(text){
+ const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+ const title=lines.find(x=>x.length>3&&x.length<80)||"Recette scannée";
+ const ingredientHints=lines.filter(x=>/(\d+\s*(g|kg|ml|cl|l|cuill|c\.|pincée|pièce)|œuf|farine|sucre|sel|poivre|huile|beurre|lait|crème|poulet|tomate|oignon)/i.test(x)).slice(0,30);
+ const steps=lines.filter(x=>/^\d+[.)]|mélang|ajout|cuire|faire|verser|prépar|chauff|servir|couper/i.test(x)).slice(0,20);
+ const timeMatch=text.match(/(\d+\s*(min|minutes|h|heure))/i);
+ return {title,ingredients:ingredientHints.join("\n"),steps:steps.join("\n")||text,time:timeMatch?timeMatch[1]:"",people:"",emoji:"📖"};
+}
+function openRecipeEditor(text){
+ const r=parseRecipe(text);
+ title.textContent="Vérifier la recette ✏️";subtitle.textContent="Corrige avant de l'enregistrer";
+ app.innerHTML=`<button class="link" onclick="openScanner()">← Retour</button>
+ <section class="section">
+ <div class="form-card">
+ <div class="field"><label>Nom de la recette</label><input id="rTitle" value="${escapeHtml(r.title)}"></div>
+ <div class="grid"><div class="field"><label>Temps</label><input id="rTime" value="${escapeHtml(r.time)}" placeholder="ex. 30 min"></div>
+ <div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people)}" placeholder="ex. 4"></div></div>
+ <div class="field"><label>Ingrédients — un par ligne</label><textarea id="rIngredients" placeholder="200 g de pâtes">${escapeHtml(r.ingredients)}</textarea></div>
+ <div class="field"><label>Préparation</label><textarea id="rSteps">${escapeHtml(r.steps)}</textarea></div>
+ <button class="primary pressable" onclick="saveScannedRecipe()">💾 Enregistrer ma recette</button>
+ </div></section>`;
+}
+function saveScannedRecipe(){
+ const r={title:document.querySelector("#rTitle").value.trim()||"Recette sans titre",
+ time:document.querySelector("#rTime").value.trim()||"?",
+ people:document.querySelector("#rPeople").value.trim()||"",
+ ingredients:document.querySelector("#rIngredients").value.trim(),
+ steps:document.querySelector("#rSteps").value.trim(),emoji:"📖",scannedAt:new Date().toISOString()};
+ state.privateRecipes=state.privateRecipes||[];state.privateRecipes.unshift(r);save();toast("📚 Recette enregistrée !");privateRecipes();
+}
+function openPrivateRecipe(i){
+ const r=state.privateRecipes[i];title.textContent=r.title;subtitle.textContent="Recette personnelle";
+ app.innerHTML=`<button class="link" onclick="privateRecipes()">← Retour</button><div class="recipe-hero">📖</div>
+ <section class="section"><h2>${escapeHtml(r.title)}</h2><p>📷 Recette scannée ${r.time?"· ⏱ "+escapeHtml(r.time):""} ${r.people?"· 👥 "+escapeHtml(r.people):""}</p></section>
+ <section class="section"><h2>🧅 Ingrédients</h2><div class="form-card" style="white-space:pre-line">${escapeHtml(r.ingredients||"À compléter")}</div></section>
+ <section class="section"><h2>👨‍🍳 Préparation</h2><div class="form-card" style="white-space:pre-line">${escapeHtml(r.steps||"À compléter")}</div></section>
+ <div class="scan-actions"><button class="secondary pressable" onclick="editPrivateRecipe(${i})">✏️ Modifier</button><button class="primary pressable" onclick="addPrivateToMenu(${i})">📅 Ajouter au menu</button></div>`;
+}
+function editPrivateRecipe(i){
+ const r=state.privateRecipes[i];openRecipeEditorFromData(r,i);
+}
+function openRecipeEditorFromData(r,i){
+ title.textContent="Modifier la recette ✏️";subtitle.textContent="Tes modifications sont sauvegardées";
+ app.innerHTML=`<section class="section"><div class="form-card">
+ <div class="field"><label>Nom</label><input id="rTitle" value="${escapeHtml(r.title)}"></div>
+ <div class="grid"><div class="field"><label>Temps</label><input id="rTime" value="${escapeHtml(r.time)}"></div><div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people)}"></div></div>
+ <div class="field"><label>Ingrédients</label><textarea id="rIngredients">${escapeHtml(r.ingredients)}</textarea></div>
+ <div class="field"><label>Préparation</label><textarea id="rSteps">${escapeHtml(r.steps)}</textarea></div>
+ <button class="primary pressable" onclick="updatePrivateRecipe(${i})">💾 Sauvegarder</button></div></section>`;
+}
+function updatePrivateRecipe(i){
+ const r=state.privateRecipes[i];r.title=document.querySelector("#rTitle").value||r.title;r.time=document.querySelector("#rTime").value;r.people=document.querySelector("#rPeople").value;r.ingredients=document.querySelector("#rIngredients").value;r.steps=document.querySelector("#rSteps").value;save();toast("Modifications enregistrées");openPrivateRecipe(i);
+}
+function addPrivateToMenu(i){
+ const r=state.privateRecipes[i];const day=prompt("Jour : Lun, Mar, Mer, Jeu, Ven, Sam ou Dim","Lun");if(!day)return;
+ const idx=state.menu.findIndex(x=>x[0].toLowerCase()===day.slice(0,3).toLowerCase());if(idx<0){toast("Jour non reconnu");return}
+ const meal=prompt("1 = midi, 2 = soir","2");state.menu[idx][meal==="1"?1:2]="📖 "+r.title;save();toast("Ajouté au menu 📅");
+}
+
 document.querySelector("#themeBtn").onclick=()=>{state.dark=!state.dark;document.body.classList.toggle("dark",state.dark);document.querySelector("#themeBtn").textContent=state.dark?"☀️":"🌙";save()};
 document.body.classList.toggle("dark",state.dark);document.querySelector("#themeBtn").textContent=state.dark?"☀️":"🌙";render();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js");

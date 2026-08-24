@@ -1,31 +1,13 @@
-# MIAM PWA — Version mobile testable
+# MIAM V2 — Scanner de recettes
 
-## Fonctions ajoutées
-- Transitions entre les écrans
-- Micro-animations et interactions tactiles
-- Cartes défilantes et animations de chargement
-- Mode sombre persistant
-- Favoris et likes persistants
-- Gestion du frigo persistante
-- Menu hebdomadaire modifiable et généré automatiquement
-- Assistant cuisine simulé
-- Minuteur de cuisine
-- PWA installable sur iOS et Android
-- Cache hors ligne de base
-
-## Test recommandé
-Pour que l'installation PWA et le mode hors ligne fonctionnent correctement, hébergez le dossier sur HTTPS.
-
-Solutions simples :
-- GitHub Pages
-- Netlify
-- Vercel
-
-### iPhone / iPad
-Ouvrir le site dans Safari → Partager → « Sur l'écran d'accueil ».
-
-### Android
-Ouvrir dans Chrome → menu ⋮ → « Installer l'application » ou « Ajouter à l'écran d'accueil ».
+## Nouveau
+- 📷 Photo d'une page de livre depuis mobile
+- 🖼️ Import d'une image existante
+- 🔤 OCR avec Tesseract.js
+- ✏️ Écran de vérification et correction
+- 💾 Sauvegarde des recettes personnelles
+- 📚 Bibliothèque de recettes scannées
+- 📅 Ajout d'une recette scannée au menu de la semaine
 
 ## Important
-Cette version est une PWA fonctionnelle. Les fonctionnalités OCR/scan et IA utilisent encore des simulations ; elles nécessiteront un backend/API pour devenir réelles.
+La reconnaissance OCR utilise Tesseract.js chargé depuis un CDN. La première analyse nécessite donc une connexion Internet. Pour un scan de meilleure qualité, utilisez une photo nette, bien éclairée et prise de face.
