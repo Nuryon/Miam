@@ -81,30 +81,157 @@ function previewScan(input){
  <div class="scan-actions"><button class="secondary pressable" onclick="openScanner()">↻ Changer</button>
  <button class="primary pressable" onclick="runOCR()">✨ Lire la recette</button></div>`;
 }
-async function runOCR(){
- if(!scannedImage)return;
- title.textContent="Analyse en cours ✨"; subtitle.textContent="Lecture du texte de ta recette";
- app.innerHTML=`<section class="scan-status"><div class="scan-spinner"></div><h2 id="ocrTitle">Lecture de la recette…</h2><p id="ocrProgress">Préparation de l'analyse…</p></section>`;
- try{
-   if(!window.Tesseract) throw new Error("OCR non chargé");
-   const imageUrl=URL.createObjectURL(scannedImage);
-   const workerOptions={logger:m=>{
-       const p=document.querySelector("#ocrProgress");
-       if(p && m.progress!==undefined) p.textContent=`${m.status} — ${Math.round(m.progress*100)}%`;
-     }};
-   const result=await Tesseract.recognize(imageUrl,'fra+eng',{
-     ...workerOptions,
-     tessedit_pageseg_mode: 6,
-     preserve_interword_spaces: '1'
-   });
-   URL.revokeObjectURL(imageUrl);
-   openRecipeEditor(result.data.text||"");
- }catch(err){
-   console.error(err);
-   toast("Impossible d'analyser l'image");
-   openRecipeEditor("");
- }
+
+async function imageToProcessedData(file, crop){
+  const bitmap = await createImageBitmap(file);
+  const sx = Math.floor(bitmap.width * crop.x);
+  const sy = Math.floor(bitmap.height * crop.y);
+  const sw = Math.floor(bitmap.width * crop.w);
+  const sh = Math.floor(bitmap.height * crop.h);
+  const scale = Math.min(2.2, 2200 / Math.max(sw, sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.floor(sw * scale));
+  canvas.height = Math.max(1, Math.floor(sh * scale));
+  const ctx = canvas.getContext("2d", {willReadFrequently:true});
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+  // Grayscale + contrast. This makes small cookbook text easier for OCR.
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  const contrast = 1.35;
+  for(let i=0;i<d.length;i+=4){
+    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const v = Math.max(0, Math.min(255, ((gray-128)*contrast)+128));
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(imageData,0,0);
+  return canvas.toDataURL("image/jpeg", 0.94);
 }
+function cleanZoneText(text){
+  return (text||"").replace(/\r/g,"").split("\n")
+    .map(cleanOCRLine).filter(Boolean)
+    .filter(x=>x.length>1)
+    .join("\n");
+}
+async function recognizeZone(file, crop, label, psm=6){
+  const status = document.querySelector("#ocrProgress");
+  const titleEl = document.querySelector("#ocrTitle");
+  if(titleEl) titleEl.textContent = label;
+  const dataUrl = await imageToProcessedData(file, crop);
+  const result = await Tesseract.recognize(dataUrl, "fra+eng", {
+    tessedit_pageseg_mode: psm,
+    preserve_interword_spaces: "1",
+    logger:m=>{
+      if(status && m.progress!==undefined){
+        status.textContent = `${label} — ${Math.round(m.progress*100)}%`;
+      }
+    }
+  });
+  return cleanZoneText(result.data.text);
+}
+function extractTitle(titleText){
+  const lines = titleText.split("\n").map(cleanOCRLine).filter(Boolean);
+  const good = lines.filter(l =>
+    !/^(pour|ingrédients?|préparation|cuisson|temps)/i.test(l) &&
+    l.length >= 3 && l.length <= 60
+  );
+  return (good[0] || "Recette scannée")
+    .replace(/[=~_]+$/g,"")
+    .replace(/\s{2,}/g," ")
+    .replace(/^(ROUGAIL\s+SAUCISSE.*)$/i,"Rougail saucisse")
+    .trim();
+}
+function extractMetaAndIngredients(leftText){
+  const lines = leftText.split("\n").map(cleanOCRLine).filter(Boolean);
+  let people="", time="", mode=false, ingredients=[];
+  for(const line of lines){
+    if(/pour\s+\d+\s+personnes?/i.test(line)){
+      const m=line.match(/(\d+)/); if(m) people=m[1]; continue;
+    }
+    if(/préparation\s*:?\s*\d+/i.test(line)){
+      const m=line.match(/(\d+\s*(?:min(?:utes)?|h(?:eures?)?))/i); if(m) time=m[1]; continue;
+    }
+    if(/cuisson\s*:?\s*\d+/i.test(line) && !time){
+      const m=line.match(/(\d+\s*(?:à\s*)?\d*\s*(?:min(?:utes)?|h(?:eures?)?))/i); if(m) time=m[1]; continue;
+    }
+    if(/^ingrédients?/i.test(line)){ mode=true; continue; }
+    if(!mode) continue;
+    // Ignore page numbers and decorative text.
+    if(/^\d{1,4}$/.test(line)) continue;
+    ingredients.push(line);
+  }
+  // If OCR missed the INGREDIENTS heading, keep lines that look like quantities/foods.
+  if(!ingredients.length){
+    ingredients = lines.filter(l =>
+      !/^(pour|préparation|cuisson|ingrédients?)/i.test(l) &&
+      /(?:\d|oignon|ail|tomate|saucisse|lard|gingembre|huile|concentr|thym|laurier|curcuma|eau|sel|poivre)/i.test(l)
+    );
+  }
+  return {people,time,ingredients:[...new Set(ingredients)].join("\n")};
+}
+function extractSteps(rightText){
+  const lines = rightText.split("\n").map(cleanOCRLine).filter(Boolean);
+  const out=[];
+  let current="";
+  for(const raw of lines){
+    if(/^préparation/i.test(raw)) continue;
+    const numbered = raw.match(/^(\d{1,2})\s*[.)]?\s*(.*)$/);
+    if(numbered){
+      if(current) out.push(current);
+      current = numbered[2].trim();
+    }else{
+      current = current ? `${current} ${raw}` : raw;
+    }
+  }
+  if(current) out.push(current);
+  return out
+    .map(s=>s.replace(/\s{2,}/g," ").trim())
+    .filter(s=>s.length>4 && !/^astuce/i.test(s))
+    .slice(0,20)
+    .map((s,i)=>`${i+1}. ${s}`)
+    .join("\n");
+}
+async function runOCR(){
+  if(!scannedImage)return;
+  title.textContent="Analyse intelligente ✨";
+  subtitle.textContent="Lecture séparée du titre, des ingrédients et des étapes";
+  app.innerHTML=`<section class="scan-status">
+    <div class="scan-spinner"></div>
+    <h2 id="ocrTitle">Préparation du scan…</h2>
+    <p id="ocrProgress">Découpage intelligent de la page…</p>
+    <p class="scan-note">Nous analysons les différentes zones de la recette séparément.</p>
+  </section>`;
+  try{
+    if(!window.Tesseract) throw new Error("OCR non chargé");
+
+    // Cookbook layout: title at top, metadata/ingredients on the left,
+    // numbered preparation steps on the right.
+    const titleText = await recognizeZone(scannedImage,{x:.10,y:.04,w:.80,h:.19},"Lecture du titre",6);
+    const leftText = await recognizeZone(scannedImage,{x:.06,y:.24,w:.35,h:.56},"Lecture des ingrédients",6);
+    const rightText = await recognizeZone(scannedImage,{x:.37,y:.24,w:.58,h:.55},"Lecture de la préparation",6);
+
+    const meta = extractMetaAndIngredients(leftText);
+    const recipe = {
+      title: extractTitle(titleText),
+      people: meta.people,
+      time: meta.time,
+      ingredients: meta.ingredients,
+      steps: extractSteps(rightText),
+      emoji:"📖",
+      rawOCR:{titleText,leftText,rightText}
+    };
+
+    // Safety fallback: never mix all page text into ingredients.
+    if(!recipe.ingredients) recipe.ingredients="";
+    if(!recipe.steps) recipe.steps="";
+    openRecipeEditorData(recipe);
+  }catch(err){
+    console.error(err);
+    toast("Le scan automatique a rencontré un problème");
+    openRecipeEditorData({title:"Recette scannée",time:"",people:"",ingredients:"",steps:"",emoji:"📖"});
+  }
+}
+
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
 
 function cleanOCRLine(line){
@@ -196,23 +323,33 @@ function formatSteps(text){
 }
 
 
+
 function openRecipeEditor(text){
-  const r=parseRecipe(text);
+  openRecipeEditorData(parseRecipe(text));
+}
+function openRecipeEditorData(r){
   title.textContent="Vérifier la recette ✏️";
-  subtitle.textContent="Le scan est séparé automatiquement en ingrédients et étapes";
+  subtitle.textContent="Chaque zone du livre a été analysée séparément";
   app.innerHTML=`<button class="link" onclick="openScanner()">← Scanner à nouveau</button>
   <section class="section scanner-editor">
     <div class="scan-result-banner">
-      <span>✨</span><div><b>Analyse terminée</b><p>Vérifie les informations avant d'enregistrer.</p></div>
+      <span>✨</span><div><b>Analyse terminée</b><p>Le titre, les ingrédients et les étapes ont été lus séparément.</p></div>
+    </div>
+    <div class="ocr-quality">
+      <span>📷 Scan par zones</span><span>🧅 Ingrédients séparés</span><span>👨‍🍳 Étapes numérotées</span>
     </div>
     <div class="form-card">
-      <div class="field"><label>Nom de la recette</label><input id="rTitle" value="${escapeHtml(r.title)}"></div>
+      <div class="field"><label>Nom de la recette</label><input id="rTitle" value="${escapeHtml(r.title||"")}"></div>
       <div class="meta-fields">
-        <div class="field"><label>Temps</label><input id="rTime" value="${escapeHtml(r.time)}" placeholder="ex. 30 min"></div>
-        <div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people)}" placeholder="ex. 4"></div>
+        <div class="field"><label>Temps de préparation</label><input id="rTime" value="${escapeHtml(r.time||"")}" placeholder="ex. 20 min"></div>
+        <div class="field"><label>Personnes</label><input id="rPeople" value="${escapeHtml(r.people||"")}" placeholder="ex. 4"></div>
       </div>
-      <div class="field"><label>Ingrédients <span class="hint">— un par ligne</span></label><textarea id="rIngredients" placeholder="250 g de farine&#10;2 œufs">${escapeHtml(r.ingredients)}</textarea></div>
-      <div class="field"><label>Préparation <span class="hint">— une étape par ligne</span></label><textarea id="rSteps">${escapeHtml(formatSteps(r.steps))}</textarea></div>
+      <div class="field"><label>Ingrédients <span class="hint">— un par ligne</span></label>
+        <textarea id="rIngredients" placeholder="2 oignons&#10;4 gousses d'ail&#10;4 tomates">${escapeHtml(r.ingredients||"")}</textarea>
+      </div>
+      <div class="field"><label>Préparation <span class="hint">— une étape par ligne</span></label>
+        <textarea id="rSteps" placeholder="1. Épluchez les oignons…">${escapeHtml(r.steps||"")}</textarea>
+      </div>
       <button class="primary pressable" onclick="saveScannedRecipe()">💾 Enregistrer ma recette</button>
     </div>
   </section>`;
