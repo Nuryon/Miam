@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ff6446">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Miam</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="toast"></div>
+<div class="app-shell" id="shell">
+  <header class="topbar" id="topbar">
+    <div><div class="eyebrow">🍋 MIAM</div><h1 id="pageTitle">Bonjour 👋</h1><p id="subtitle">Une idée pour aujourd'hui ?</p></div>
+    <button class="icon-btn pressable" id="themeBtn">🌙</button>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <nav class="bottom-nav">
+    <button data-page="home" class="active"><b>⌂</b><span>Accueil</span></button>
+    <button data-page="discover"><b>⌕</b><span>Découvrir</span></button>
+    <button data-page="fridge"><b>♧</b><span>Frigo</span></button>
+    <button data-page="menu"><b>▣</b><span>Menu</span></button>
+    <button data-page="profile"><b>☺</b><span>Profil</span></button>
+  </nav>
+  <button class="ai-fab pressable" data-page="assistant" aria-label="Assistant Miam">✨</button>
+</div>
+<script src="app.js"></script>
+</body></html>
