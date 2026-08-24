@@ -1,15 +1,10 @@
-# MIAM V5 — Recettes scannées intégrées
+# MIAM V6 — Scanner corrigé
 
-Les recettes importées par scan utilisent désormais la même expérience que les recettes natives :
-
-- image / hero
-- titre et informations
-- J'aime / Pas pour moi / Favori
-- compatibilité avec le frigo
-- liste d'ingrédients en cartes
-- indicateur des ingrédients disponibles
-- étapes de préparation
-- ajout au menu
-- modification de la recette
-
-Le scanner et les recettes scannées ne possèdent plus une fiche séparée au style "magazine".
+Corrections :
+- zones OCR sans chevauchement
+- titre isolé de l'introduction
+- métadonnées séparées des ingrédients
+- ingrédients lus dans leur propre colonne
+- préparation lue uniquement dans la colonne de droite
+- contraste et binarisation renforcés
+- suppression des recettes scannées depuis leur fiche
