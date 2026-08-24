@@ -370,27 +370,110 @@ function saveScannedRecipe(){
  state.privateRecipes.unshift(r);save();toast("📚 Recette enregistrée !");privateRecipes();
 }
 
+
+function ingredientEmoji(name){
+  const n=(name||"").toLowerCase();
+  const map=[
+    [/pâte|spaghetti|penne|tagliatelle/,"🍝"],
+    [/champignon/,"🍄"],[/crème|lait/,"🥛"],[/tomate/,"🍅"],
+    [/oignon/,"🧅"],[/ail/,"🧄"],[/œuf|oeuf/,"🥚"],
+    [/beurre/,"🧈"],[/farine/,"🌾"],[/sucre/,"🍬"],
+    [/poulet|viande|saucisse|lard/,"🍖"],[/riz/,"🍚"],
+    [/citron/,"🍋"],[/huile/,"🫒"],[/fromage/,"🧀"],
+    [/poivre|sel|épice|curcuma|gingembre/,"🧂"],[/eau/,"💧"]
+  ];
+  for(const [re,e] of map) if(re.test(n)) return e;
+  return "🥕";
+}
+function splitIngredient(line){
+  const clean=line.replace(/^[•\-]\s*/,"").trim();
+  const match=clean.match(/^((?:\d+(?:[.,]\d+)?\s*(?:g|kg|ml|cl|l|min|sachet|cuill(?:ère)?s?|tranches?|gousses?|boîtes?|verres?|pincée|½|1\/2)?\s*)+)(.*)$/i);
+  if(match && match[2].trim()) return {qty:match[1].trim(),name:match[2].trim()};
+  return {qty:"",name:clean};
+}
+function getScannedIngredients(r){
+  return (r.ingredients||"").split(/\n+/).map(x=>splitIngredient(x)).filter(x=>x.name);
+}
+function fridgeMatchForScanned(r){
+  const fridge=(state.fridge||[]).map(x=>String(x).toLowerCase());
+  const items=getScannedIngredients(r);
+  if(!items.length) return {percent:0,available:new Set()};
+  const available=new Set();
+  items.forEach((item,idx)=>{
+    const n=item.name.toLowerCase();
+    if(fridge.some(f=>n.includes(f)||f.includes(n))) available.add(idx);
+  });
+  return {percent:Math.round((available.size/items.length)*100),available};
+}
+function togglePrivateReaction(i,type){
+  const r=state.privateRecipes[i];
+  r.reaction = r.reaction===type ? null : type;
+  save(); openPrivateRecipe(i);
+}
+function togglePrivateFavorite(i){
+  const r=state.privateRecipes[i];
+  r.favorite=!r.favorite; save(); openPrivateRecipe(i);
+}
 function openPrivateRecipe(i){
- const r=state.privateRecipes[i];
- title.textContent=r.title;subtitle.textContent="Recette personnelle";
- const ingredients=(r.ingredients||"À compléter").split(/\n+/).filter(Boolean);
- const steps=(r.steps||"À compléter").split(/\n+/).filter(Boolean);
- app.innerHTML=`<button class="link" onclick="privateRecipes()">← Mes recettes</button>
- <article class="recipe-sheet">
-   <aside class="recipe-ingredients-panel">
-     <h1>${escapeHtml(r.title)}</h1>
-     <h2>Ingrédients</h2>
-     <ul>${ingredients.map(x=>`<li>${escapeHtml(x.replace(/^[•\-]\s*/,""))}</li>`).join("")}</ul>
-   </aside>
-   <main class="recipe-main-panel">
-     <div class="recipe-photo-wrap">
-       ${r.image ? `<img src="${r.image}" class="private-recipe-image" alt="${escapeHtml(r.title)}">` : `<div class="recipe-photo-placeholder">📖</div>`}
-     </div>
-     <div class="recipe-meta">⏱ ${escapeHtml(r.time||"Temps à préciser")} ${r.people?`<span>👥 ${escapeHtml(r.people)} personnes</span>`:""}</div>
-     <ol class="recipe-steps">${steps.map(x=>`<li>${escapeHtml(x.replace(/^\d+\s*[.)-]\s*/,""))}</li>`).join("")}</ol>
-     <div class="recipe-actions"><button class="secondary pressable" onclick="editPrivateRecipe(${i})">✏️ Modifier</button><button class="primary pressable" onclick="addPrivateToMenu(${i})">📅 Ajouter au menu</button></div>
-   </main>
- </article>`;
+  const r=state.privateRecipes[i];
+  title.textContent=r.title;
+  subtitle.textContent="Recette personnelle";
+  const ingredients=getScannedIngredients(r);
+  const steps=(r.steps||"").split(/\n+/).map(x=>x.replace(/^\d+\s*[.)-]\s*/,"").trim()).filter(Boolean);
+  const match=fridgeMatchForScanned(r);
+  const image = r.image
+    ? `<img src="${r.image}" class="detail-image" alt="${escapeHtml(r.title)}">`
+    : `<div class="detail-image detail-placeholder">${r.emoji||"🍽️"}</div>`;
+
+  app.innerHTML=`
+    <button class="link" onclick="privateRecipes()">← Mes recettes</button>
+
+    <section class="recipe-detail-mobile">
+      <div class="detail-hero">${image}</div>
+
+      <div class="detail-content">
+        <h1 class="detail-title">${escapeHtml(r.title)}</h1>
+
+        <div class="detail-meta">
+          <span>⭐ ${r.rating||"Nouvelle"}</span>
+          <span>⏱ ${escapeHtml(r.time||"Temps à préciser")}</span>
+          ${r.people?`<span>👥 ${escapeHtml(r.people)} pers.</span>`:""}
+        </div>
+
+        <div class="detail-actions">
+          <button class="action-btn ${r.reaction==="like"?"active-like":""}" onclick="togglePrivateReaction(${i},'like')">👍 J'aime</button>
+          <button class="action-btn ${r.reaction==="dislike"?"active-dislike":""}" onclick="togglePrivateReaction(${i},'dislike')">👎 Pas pour moi</button>
+          <button class="action-btn ${r.favorite?"active-favorite":""}" onclick="togglePrivateFavorite(${i})">💗 ${r.favorite?"Favori":"Favori"}</button>
+        </div>
+
+        <div class="fridge-compat">
+          <div class="fridge-title">🧊 <strong>Compatible avec ton frigo</strong></div>
+          <div class="fridge-percent">${match.percent}% des ingrédients disponibles</div>
+          <div class="compat-track"><div class="compat-fill" style="width:${match.percent}%"></div></div>
+        </div>
+
+        <h2 class="detail-section-title">Ingrédients</h2>
+        <div class="ingredient-list">
+          ${ingredients.length ? ingredients.map((item,idx)=>`
+            <div class="ingredient-row ${match.available.has(idx)?"ingredient-available":""}">
+              <div class="ingredient-left"><span class="ingredient-icon">${ingredientEmoji(item.name)}</span><span>${escapeHtml(item.name)}</span></div>
+              <div class="ingredient-right">${escapeHtml(item.qty)} ${match.available.has(idx)?'<span class="check">✓</span>':""}</div>
+            </div>`).join("") : `<div class="empty">Aucun ingrédient détecté.</div>`}
+        </div>
+
+        <h2 class="detail-section-title">Préparation</h2>
+        <div class="step-list">
+          ${steps.length ? steps.map((step,n)=>`
+            <div class="step-row"><div class="step-number">${n+1}</div><div>${escapeHtml(step)}</div></div>`).join("")
+            : `<div class="empty">Aucune étape détectée.</div>`}
+        </div>
+
+        <div class="detail-bottom-actions">
+          <button class="secondary pressable" onclick="editPrivateRecipe(${i})">✏️ Modifier</button>
+          <button class="primary pressable" onclick="addPrivateToMenu(${i})">📅 Ajouter au menu</button>
+        </div>
+      </div>
+    </section>`;
 }
 
 function editPrivateRecipe(i){

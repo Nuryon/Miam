@@ -1,13 +1,15 @@
-# MIAM V4 — Scanner intelligent par zones
+# MIAM V5 — Recettes scannées intégrées
 
-Cette version corrige le principal problème du scanner précédent :
-l'OCR ne lit plus toute la page comme un seul bloc.
+Les recettes importées par scan utilisent désormais la même expérience que les recettes natives :
 
-## Analyse séparée
-- Zone 1 : titre
-- Zone 2 : personnes, temps et ingrédients
-- Zone 3 : préparation numérotée
+- image / hero
+- titre et informations
+- J'aime / Pas pour moi / Favori
+- compatibilité avec le frigo
+- liste d'ingrédients en cartes
+- indicateur des ingrédients disponibles
+- étapes de préparation
+- ajout au menu
+- modification de la recette
 
-L'image est également convertie en niveaux de gris avec un contraste renforcé avant la lecture OCR.
-
-Cette approche est particulièrement adaptée aux livres de cuisine dont la page est organisée en colonnes.
+Le scanner et les recettes scannées ne possèdent plus une fiche séparée au style "magazine".
